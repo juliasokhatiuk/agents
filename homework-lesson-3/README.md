@@ -1,51 +1,124 @@
-# Research Agent - Опис проєкту
+# Research Agent
 
-Цей файл описує процес роботи автономного пошукового агента (Research Agent), який працює як консольний застосунок (`python main.py`).
+Інтерактивний агент, який отримує питання від користувача, самостійно шукає інформацію через набір інструментів і генерує структурований Markdown-звіт.
 
-## 🚀 Як запустити
+## Швидкий старт
 
-Щоб запустити агента, потрібно виконати головний файл з терміналу:
 ```bash
+# 1. Клонувати репозиторій
+git clone <repo-url>
+
+# 2. Встановити залежності
+pip install -r requirements.txt
+
+# 3. Створити .env файл
+cp .env.example .env
+# Відкрити .env і вставити свій API-ключ
+
+# 4. Запустити
 python main.py
 ```
-Після запуску ви побачите інтерактивну консоль, де можна вводити запити для дослідження (щоб вийти, напишіть `exit` або `quit`).
 
-## 📦 Залежності (що встановити)
+## Змінні середовища
 
-Всі необхідні бібліотеки знаходяться у файлі `requirements.txt`. Для їх встановлення виконайте:
+Створіть файл `.env` на основі `.env.example`:
+
+```env
+OPENAI_API_KEY=sk-...        # або інший провайдер
+MODEL_NAME=gpt-5-mini
+
+```
+
+> **Важливо:** ніколи не комітьте `.env` у git. Він вже додан до `.gitignore`.
+
+## Залежності
+
+```
+langchain>=1.2.0
+langchain-openai>=0.3.0
+langgraph>=0.5.0
+ddgs>=7.0
+trafilatura>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+```
+
+Встановити одною командою:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-**Основні залежності:**
-- `langchain`, `langgraph`, `langchain-openai` — для логіки агента, графа пам'яті та роботи з LLM.
-- `ddgs` (DuckDuckGo Search) — для пошуку інформації в Інтернеті.
-- `trafilatura` — для завантаження та парсингу тексту з вебсторінок.
-- `pydantic`, `pydantic-settings` — для валідації та управління конфігурацією.
+## Структура проєкту
 
-## 🔑 Необхідні API-ключі
-
-Для коректної роботи агента необхідний доступ до API від OpenAI. Конфігурація зчитується з файлу `.env` або системних змінних середовища. 
-
-Вам потрібен наступний ключ:
-- **`OPENAI_API_KEY`**
-
-Створіть файл `.env` у корені проєкту (на основі `.env.example`, якщо він є) і додайте туди ключ:
-```env
-OPENAI_API_KEY=your_actual_api_key_here
+```
+research-agent/
+├── main.py              # Entry point — інтерактивний REPL
+├── agent.py             # Налаштування агента (LLM, tools, memory)
+├── tools.py             # Визначення та реалізація інструментів
+├── config.py            # System prompt, налаштування, константи
+├── requirements.txt
+├── .env.example         # Шаблон змінних середовища
+├── output/
+│   └── comparison_naive_sentencewindow_parentchild.md        # Приклад згенерованого звіту
+└── README.md
 ```
 
-## 🏗️ Короткий опис архітектури
+## Інструменти агента
 
-Проєкт реалізує автономного агента-дослідника (Research Assistant) за допомогою екосистеми LangChain та LangGraph.
+| Інструмент | Опис |
+|---|---|
+| `web_search(query)` | Пошук через DuckDuckGo, повертає title, url, snippet |
+| `read_url(url)` | Читає повний текст сторінки (перші 5000 символів) |
+| `write_report(filename, content)` | Зберігає Markdown-звіт у директорію `output/` |
 
-**Основні компоненти (файли):**
-1. **`main.py`** — Точка входу. Запускає інтерактивний цикл спілкування, передає запит у граф агента (`agent.stream`) і в реальному часі виводить у консоль проміжні кроки (наприклад, виклики інструментів) та статус генерації звіту.
-2. **`config.py`** — Керування конфігурацією через `pydantic_settings`. Зчитує змінні середовища, визначає налаштування пошуку (ліміти результатів, довжину тексту) та містить головний системний промпт з інструкціями для агента.
-3. **`agent.py`** — Ініціалізація LLM-агента (`create_agent`) та чат-моделі. Використовує інструменти з `tools.py` та зберігає контекст розмови за допомогою `MemorySaver` (із LangGraph).
-4. **`tools.py`** — Модуль інструментів (tools), якими оперує агент:
-    - `web_search`: пошук інформації в інтернеті за ключовими словами (через `DDGS`).
-    - `read_url`: завантаження та парсинг тексту вибраної вебсторінки (`trafilatura`).
-    - `write_report`: збереження фінального звіту про дослідження у Markdown-файл (в директорію `output/`).
+## Архітектура
 
-Ця архітектура дозволяє агенту самостійно (без втручання користувача між кроками) виконувати пошук, читати сторінки, аналізувати контент і формувати структурований звіт на основі знайденої інформації.
+Агент побудований на **LangGraph** + **LangChain** за патерном ReAct:
+
+```
+Користувач → main.py (REPL) → agent.py → LLM (OpenAI)
+                                              ↓
+                                    tools.py (web_search / read_url / write_report)
+                                              ↓
+                                    MemorySaver (пам'ять сесії)
+                                              ↓
+                                    output/*.md (фінальний звіт)
+```
+
+- **LLM** сам вирішує, які інструменти викликати і в якій послідовності
+- **MemorySaver** зберігає контекст діалогу між запитами в межах сесії
+- **Ліміт кроків** (`max_iterations`) захищає від нескінченних циклів
+- **Обрізка результатів** — `read_url` повертає не більше 5000 символів, щоб не переповнити контекстне вікно
+
+## Приклад роботи
+
+```
+You: Порівняй naive RAG, sentence-window та parent-child retrieval
+→ web_search({'query': "naive RAG sentence-window parent-child retrieval 'parent-child retrieval' 'sentence windo)  
+→ read_url({'url': 'https://medium.com/@harsh_77214/)      
+→ web_search({'query': "parent-child retrieval RAG 'parent-child' retrieval 'auto-merge' 'parent section' 'merged)    
+→ read_url({'url': 'https://developers.llamaindex.ai/python/examples/retrievers/})
+→ write_report({'filename': 'comparison_naive_sentencewindow_parentchild.md')  
+
+Agent: Я підготував порівняльний звіт (у Markdown) по naive RAG, sentence‑window та parent‑child (auto‑merge) retrieval, включно з визначеннями, технічною логікою, перевагами/недоліками, практичними порадами та емпіричними спостереженнями. Файл збережено як comparison_naive_sentencewindow_parentchild.md.
+```
+
+
+## Зміна LLM-провайдера
+
+У `agent.py` достатньо замінити один рядок:
+
+```python
+# OpenAI (за замовчуванням)
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model=settings.model_name)
+
+# Anthropic
+from langchain_anthropic import ChatAnthropic
+llm = ChatAnthropic(model="claude-sonnet-4-5")
+
+# Google
+from langchain_google_genai import ChatGoogleGenerativeAI
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+```
