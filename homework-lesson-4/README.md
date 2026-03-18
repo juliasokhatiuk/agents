@@ -1,6 +1,6 @@
-# Research Agent
+# Research Agent — власний ReAct Loop
 
-Інтерактивний агент, який отримує питання від користувача, самостійно шукає інформацію через набір інструментів і генерує структурований Markdown-звіт.
+Інтерактивний агент, який отримує питання від користувача, самостійно шукає інформацію через набір інструментів і генерує структурований Markdown-звіт. Реалізований **без фреймворкових абстракцій** — власний ReAct loop поверх OpenAI API.
 
 ## Швидкий старт
 
@@ -24,19 +24,16 @@ python main.py
 Створіть файл `.env` на основі `.env.example`:
 
 ```env
-OPENAI_API_KEY=sk-...        # або інший провайдер
+API_KEY = "sk-your-api-key-here"
 MODEL_NAME=gpt-5-mini
-
 ```
 
-> **Важливо:** ніколи не комітьте `.env` у git. Він вже додан до `.gitignore`.
+> **Важливо:** ніколи не комітьте `.env` у git. Він вже доданий до `.gitignore`.
 
 ## Залежності
 
 ```
-langchain>=1.2.0
-langchain-openai>=0.3.0
-langgraph>=0.5.0
+openai>=1.0.0
 ddgs>=7.0
 trafilatura>=2.0.0
 pydantic-settings>=2.0.0
@@ -54,13 +51,13 @@ pip install -r requirements.txt
 ```
 research-agent/
 ├── main.py              # Entry point — інтерактивний REPL
-├── agent.py             # Налаштування агента (LLM, tools, memory)
-├── tools.py             # Визначення та реалізація інструментів
-├── config.py            # System prompt, налаштування, константи
+├── agent.py             # Власний ReAct loop (без create_react_agent)
+├── tools.py             # Функції + JSON Schema для кожного tool
+├── config.py            # System prompt, налаштування
 ├── requirements.txt
-├── .env.example         # Шаблон змінних середовища
+├── .env.example
 ├── output/
-│   └── comparison_naive_sentencewindow_parentchild.md        # Приклад згенерованого звіту
+│   └── naive_rag_vs_sentence_window.md
 └── README.md
 ```
 
@@ -72,53 +69,57 @@ research-agent/
 | `read_url(url)` | Читає повний текст сторінки (перші 5000 символів) |
 | `write_report(filename, content)` | Зберігає Markdown-звіт у директорію `output/` |
 
+Кожен інструмент описаний у форматі **JSON Schema** для OpenAI tool calling API — без `@tool` декоратора LangChain.
+
 ## Архітектура
 
-Агент побудований на **LangGraph** + **LangChain** за патерном ReAct:
-
 ```
-Користувач → main.py (REPL) → agent.py → LLM (OpenAI)
-                                              ↓
-                                    tools.py (web_search / read_url / write_report)
-                                              ↓
-                                    MemorySaver (пам'ять сесії)
-                                              ↓
-                                    output/*.md (фінальний звіт)
+Користувач → main.py (REPL)
+                  ↓
+             agent.py — власний ReAct loop
+                  ↓
+          OpenAI API (tool calling)
+                  ↓
+          tools.py (web_search / read_url / write_report)
+                  ↓
+          working_memory (список messages — ручна пам'ять сесії)
+                  ↓
+          output/*.md (фінальний звіт)
 ```
 
-- **LLM** сам вирішує, які інструменти викликати і в якій послідовності
-- **MemorySaver** зберігає контекст діалогу між запитами в межах сесії
-- **Ліміт кроків** (`max_iterations`) захищає від нескінченних циклів
-- **Обрізка результатів** — `read_url` повертає не більше 5000 символів, щоб не переповнити контекстне вікно
+**Що робить ReAct loop:**
+1. Відправляє `messages` + `tools` в OpenAI API
+2. Якщо відповідь містить `tool_calls` — виконує їх і додає результати в `messages`
+3. Повторює до фінальної відповіді або досягнення `max_iterations`
+
+**Порівняно з homework-lesson-3:**
+
+| homework-lesson-3 | homework-lesson-4 |
+|---|---|
+| `create_react_agent` | Власний цикл `while` |
+| `MemorySaver` | Ручний список `working_memory` |
+| `@tool` декоратор | JSON Schema для кожного tool |
+| Базовий system prompt | Промпт з роллю, прикладами, обмеженнями |
 
 ## Приклад роботи
 
 ```
-You: Порівняй naive RAG, sentence-window та parent-child retrieval
-→ web_search({'query': "naive RAG sentence-window parent-child retrieval 'parent-child retrieval' 'sentence windo)  
-→ read_url({'url': 'https://medium.com/@harsh_77214/)      
-→ web_search({'query': "parent-child retrieval RAG 'parent-child' retrieval 'auto-merge' 'parent section' 'merged)    
-→ read_url({'url': 'https://developers.llamaindex.ai/python/examples/retrievers/})
-→ write_report({'filename': 'comparison_naive_sentencewindow_parentchild.md')  
+You: Порівняй naive RAG та sentence-window retrieval
 
-Agent: Я підготував порівняльний звіт (у Markdown) по naive RAG, sentence‑window та parent‑child (auto‑merge) retrieval, включно з визначеннями, технічною логікою, перевагами/недоліками, практичними порадами та емпіричними спостереженнями. Файл збережено як comparison_naive_sentencewindow_parentchild.md.
-```
+🔧 Tool call: web_search(query="naive RAG retrieval "naive RAG"")
+📎 Result: Found 5 results...
 
+🔧 Tool call: web_search(query="sentence-window retrieval sentence window retrieval RAG 'sentence-window' 'sentence window' retrieval")
+📎 Result: Found 5 results...
 
-## Зміна LLM-провайдера
+🔧 Tool call: read_url(url="https://docs.haystack.deepset.ai/docs/sentencewindowretrieval")
+📎 Result: [147 chars] {"status": "error", "message": "The page at https://docs.haystack.deepset.ai/doc...
 
-У `agent.py` достатньо замінити один рядок:
+🔧 Tool call: read_url(url="https://learn.deeplearning.ai/courses/building-evaluating-advanced-rag/lesson/4/sentence-window-retrieval")
+📎 Result: [4361 chars] 💻 Accessing Utils File and Helper Functions In each notebook on the top menu: 1:...
 
-```python
-# OpenAI (за замовчуванням)
-from langchain_openai import ChatOpenAI
-llm = ChatOpenAI(model=settings.model_name)
+🔧 Tool call: write_report(filename="naive_rag_vs_sentence_window.md", content="# Порівняння: Naive RAG vs Sentence-Window Retriev...")
+📎 Result: Report saved to output/naive_rag_vs_sentence_window.md
 
-# Anthropic
-from langchain_anthropic import ChatAnthropic
-llm = ChatAnthropic(model="claude-sonnet-4-5")
+Agent: Готово — звіт збережено як naive_rag_vs_sentence_window.md.
 
-# Google
-from langchain_google_genai import ChatGoogleGenerativeAI
-llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
-```
