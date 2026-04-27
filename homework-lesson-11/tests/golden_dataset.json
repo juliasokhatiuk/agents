@@ -1,0 +1,17 @@
+[
+  {
+    "input": "Compare naive RAG with hybrid retrieval and reranking.",
+    "expected_output": "Naive RAG usually relies on a single retrieval method, often dense vector search over fixed-size chunks, and then sends the top matches directly to the model. Hybrid retrieval is stronger because it combines semantic retrieval with lexical retrieval such as BM25, so it can match both meaning and exact terms. Reranking adds a final relevance step over the retrieved candidates, which helps prioritize the passages that best answer the query. The overall effect is better recall and better final context quality, especially for technical queries, rare terminology, and cases where semantic search alone misses an exact phrase.",
+    "category": "happy_path"
+  },
+    {
+    "input": "Give me a compact but complete overview of modern LLM adaptation methods.",
+    "expected_output": "A strong overview should distinguish between inference-time adaptation and post-training adaptation. On the inference side, prompt engineering and few-shot prompting adapt behavior without changing model weights, while tool use and RAG extend the model with external actions and external knowledge. On the training side, instruction fine-tuning teaches the model to follow user requests, and RLHF further shapes behavior toward responses humans prefer, such as answers that are more helpful, truthful, and harmless. The answer should note that these methods are complementary rather than mutually exclusive.",
+    "category": "edge_case"
+  },
+    {
+    "input": "What's the weather in Paris tomorrow and what should I wear?",
+    "expected_output": "This request is outside the intended knowledge domain of the system, which is centered on research topics such as RAG, LLMs, retrieval, and LangChain-style agent workflows. A good response should say that the question is not grounded in the local corpus and is not an appropriate target for this benchmark. It should briefly redirect the user toward a weather service or a general assistant rather than pretending to answer from the research knowledge base.",
+    "category": "failure_case"
+  }
+]
